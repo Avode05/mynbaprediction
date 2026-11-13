@@ -1,0 +1,38 @@
+name: Aggiorna dati NBA
+
+on:
+  schedule:
+    # Ogni 2 ore alle ore UTC pari = in Italia 19, 21, 23, 01, 03 ... (ora solare).
+    # Con l'ora legale (estate) diventano 20, 22, 00, 02 ...
+    # GitHub può far partire l'aggiornamento con qualche minuto di ritardo.
+    - cron: "0 */2 * * *"
+  workflow_dispatch: # pulsante "Run workflow" per aggiornare a mano
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aggiorna-dati
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Scarica i dati
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
+        run: node scripts/update-data.mjs
+      - name: Salva data.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add data.json defense-cache.json
+          git diff --cached --quiet || git commit -m "Aggiorna dati $(date -u +%Y-%m-%d\ %H:%M)"
+          git push

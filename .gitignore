@@ -1,0 +1,3 @@
+# la chiave della Odds API non deve mai finire online
+.env
+.claude/
