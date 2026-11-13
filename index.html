@@ -293,7 +293,7 @@
 
   <!-- CONSIGLI AI -->
   <section id="tab-ai">
-    <h2>🤖 Le 5 giocate di oggi · solo OVER</h2>
+    <h2>🤖 Le 10 giocate di oggi · solo OVER</h2>
     <p class="secHint">L'assistente analizza tutte le props di stasera e sceglie per ogni giocatore la soglia di Over più alta che resta molto probabile. Scrivi la linea e la quota del tuo bookmaker per verificare se conviene.</p>
     <div id="aiList" class="aiList"></div>
     <div id="aiMulti" style="margin-top:12px"></div>
@@ -929,9 +929,10 @@ function renderHome(){
   }).join('');
 }
 
-/* ---------------- 🤖 Consigli AI: 5 giocate OVER del giorno ----------------
+/* ---------------- 🤖 Consigli AI: 10 giocate OVER del giorno ----------------
    Per ogni giocatore e statistica cerca la soglia di Over più alta che resta molto probabile
-   (i bookmaker italiani propongono più soglie di Over), poi sceglie le 5 migliori. */
+   (i bookmaker italiani propongono più soglie di Over), poi sceglie le migliori. */
+const AI_N = 10;
 const AI_STATS = ['pts','reb','ast','fg3','pra','pr','pa','ra'];
 // probabilità di Over X: 60% modello (proiezione) + 40% frequenza reale nelle ultime 20 partite
 function probAt(pj, X, logs, s){
@@ -970,7 +971,7 @@ function aiPicks(){
   for(const x of c){ // varietà: 1 giocata per giocatore, massimo 2 per partita
     if(players.has(x.p.name) || (perGame[x.p.gameId]||0) >= 2) continue;
     players.add(x.p.name); perGame[x.p.gameId] = (perGame[x.p.gameId]||0) + 1; out.push(x);
-    if(out.length === 5) break;
+    if(out.length === AI_N) break;
   }
   return {picks: out, pool: c.length};
 }
@@ -1017,10 +1018,12 @@ function renderAI(){
   const {picks, pool} = aiPicks();
   if(!picks.length){ $('aiList').innerHTML = '<div class="empty">Oggi il modello non trova giocate OVER abbastanza solide. Meglio non forzare.</div>'; $('aiMulti').innerHTML=''; return; }
   $('aiList').innerHTML = picks.map(aiCard).join('');
-  const pAll = picks.reduce((t,x)=>t*x.pr, 1);
-  $('aiMulti').innerHTML = `<div class="aiCard" style="border-style:dashed"><b>Se le giochi tutte e 5 in multipla</b>
-    <p class="sub" style="margin-top:6px;color:var(--muted);font-size:13px;line-height:1.5">Probabilità che vincano tutte: <b style="color:${col(Math.round(pAll*100))}">${Math.round(pAll*100)}%</b> · quota minima perché convenga: <b>${fmt(1/pAll,2)}</b>.
-    Più eventi metti insieme, più cala la probabilità: anche 5 giocate al 75% vincono tutte insieme meno di 1 volta su 4.</p></div>`;
+  const sizes = [...new Set([3, 5, picks.length].filter(n=>n>=2 && n<=picks.length))];
+  const rows = sizes.map(n=>{ const pr = picks.slice(0,n).reduce((t,x)=>t*x.pr, 1), v = Math.round(pr*100);
+    return `<tr><td class="l">Le prime ${n}</td><td style="color:${col(v)};font-weight:800">${v}%</td><td><b>${fmt(1/pr,2)}</b></td></tr>`; }).join('');
+  $('aiMulti').innerHTML = `<div class="aiCard" style="border-style:dashed"><b>Se le metti in multipla</b>
+    <table style="margin-top:6px"><thead><tr><th style="text-align:left">Multipla</th><th>Prob. che vincano tutte</th><th>Quota minima</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="sub" style="margin-top:8px;color:var(--muted);font-size:13px;line-height:1.5">Più eventi metti insieme, più cala la probabilità che vincano tutti: anche giocate all'80% messe insieme in 10 vincono tutte circa 1 volta su 10. Le singole o le multiple corte sono più prudenti.</p></div>`;
   $('aiInfo').textContent = `Analizzati ${DATA.length} giocatori e ${pool} soglie Over valide per le ${GAMES.length} partite di stasera.`;
 }
 
