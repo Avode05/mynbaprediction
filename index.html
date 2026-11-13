@@ -950,6 +950,16 @@ function aiCandidate(p, s){
   const l10 = logs.slice(0,10), l20 = logs.slice(0,20);
   const mins = l10.map(g=>g.min||30), mAvg = mean(mins), mSd = Math.sqrt(mean(mins.map(v=>(v-mAvg)**2)));
   if(mAvg < 20) return null;
+  // linea vera (bookmaker o inserita da te): si valuta solo quella, con la quota Over
+  if(!isEst(p,s)){
+    const X = p.lines[s], pr = probAt(pj, X, logs, s), h10 = l10.filter(g=>g[s]>X).length, h20 = l20.filter(g=>g[s]>X).length/l20.length;
+    const odd = p.odds && p.odds[s] && p.odds[s].over, ev = odd ? odd*pr : null;
+    if(pr < 0.6 || h10 < 6 || (ev !== null && ev < 0.97)) return null;
+    const m = matchup(p, s, 'over');
+    let streak = 0; for(const g of logs){ if(g[s]>X) streak++; else break; }
+    const score = 100*(0.45*pr + 0.25*h10/10 + 0.15*h20) + (m ? 0.15*(m.score-50) : 0) + (ev ? (ev-1)*120 : 0) + 8 - (mSd>6 ? 5 : 0) + Math.min(streak,10)*0.5;
+    return {p, s, X, pr, h10, h20, pj, m, streak, mAvg, mSd, score, rest:tonightRest(p), real:true, odd, ev};
+  }
   const top = Math.floor(pj.proj) + 0.5, low = Math.max(0.5, Math.ceil(pj.proj*0.72) - 0.5);
   for(let X = top; X >= low; X -= 1){
     const pr = probAt(pj, X, logs, s), h10 = l10.filter(g=>g[s]>X).length, h20 = l20.filter(g=>g[s]>X).length/l20.length;
@@ -1003,8 +1013,8 @@ function aiCard(x, i){
       <div class="av" style="background:${tc}33;border:2px solid ${tc}">${initials(p.name)}</div>
       <div style="min-width:0;flex:1"><div class="aiName">${esc(p.name)}</div><div class="aiMeta">${p.team} ${p.home?'vs':'@'} ${p.opp} · ore ${p.time}</div></div>
       <div class="aiProb" style="color:${col(prob)}">${prob}%<small>PROB.</small></div></div>
-    <div class="aiPick">OVER ${fmt(X)} <span>${STATS[s].label.toUpperCase()}</span></div>
-    <div class="aiOdds">Conviene se la quota è almeno <b>${fmt(fair,2)}</b></div>
+    <div class="aiPick">OVER ${fmt(X)} <span>${STATS[s].label.toUpperCase()}</span>${x.real?` <span class="tag ${isMan(p,s)?'man':'book'}">${isMan(p,s)?'MIA LINEA':'LINEA BOOKMAKER'}</span>`:''}</div>
+    <div class="aiOdds">${x.real && x.odd ? `Quota <b>${fmt(x.odd,2)}</b> · minima ${fmt(fair,2)} → <b style="color:${x.ev>=1.03?'var(--over)':'var(--mid)'}">${x.ev>=1.03?`valore +${Math.round((x.ev-1)*100)}%`:'quota giusta, poco margine'}</b>` : `Soglia scelta dal modello · conviene se la quota è almeno <b>${fmt(fair,2)}</b>`}</div>
     <ul class="aiWhy">${r.map(t=>`<li>${t}</li>`).join('')}</ul>
     ${risks.length?`<div class="aiRisk">⚠️ Attenzione: ${risks.join('; ')}.</div>`:''}
     <div class="aiIn"><input inputmode="decimal" placeholder="Linea del tuo bookmaker (es. ${fmt(X+1)})" data-ailine="${esc(p.name)}|${s}" value="${chk?fmt(chk.line):''}">
