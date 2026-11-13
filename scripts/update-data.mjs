@@ -356,7 +356,19 @@ for (const [gi, g] of games.entries()) {
 let def = { teams: {}, n: 0, games: 0 };
 try { def = await defense(Object.keys(teams)); } catch (e) { console.warn('Difese non disponibili:', e.message); }
 
-const { lines: book, info: oddsInfo } = await getOdds(games);
+// Linee: scaricate una sola volta al giorno (dalle 18 UTC, quando i bookmaker le hanno pubblicate),
+// poi riusate dagli aggiornamenti successivi della stessa giornata per non consumare crediti.
+const ODDS_CACHE = new URL('../odds-cache.json', import.meta.url);
+let oc = null; try { oc = JSON.parse(await readFile(ODDS_CACHE, 'utf8')); } catch {}
+const day = games.length ? usDate(0) : '';
+let book = {}, oddsInfo = { markets: [], remaining: null };
+if (oc && oc.day === day && Object.keys(oc.lines || {}).length) {
+  book = oc.lines; oddsInfo = oc.info; console.log(`Linee dalla cache di oggi (${Object.keys(book).length}).`);
+} else if (ODDS_KEY && (new Date().getUTCHours() >= 18 || process.env.ODDS_FORCE === '1')) {
+  ({ lines: book, info: oddsInfo } = await getOdds(games));
+  if (Object.keys(book).length) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString() }));
+} else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 18 UTC), uso le stimate.');
+else console.log('ODDS_API_KEY non impostata: uso linee stimate.');
 const STATS = ['pts', 'reb', 'ast', 'fg3', 'pra', 'pa', 'pr', 'ra', 'stl', 'blk', 'stocks', 'tov', 'fant', 'dd', 'td'];
 for (const p of players) {
   p.lines = {}; p.odds = {}; p.est = {};
