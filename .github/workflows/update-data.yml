@@ -28,6 +28,8 @@ jobs:
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
+          # lanciato a mano: scarica le linee anche prima delle 19
+          ODDS_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
         run: node scripts/update-data.mjs
       - name: Salva data.json
         run: |
