@@ -283,30 +283,25 @@ async function defense(teamAbbrs) {
 }
 
 // ---------- 5. Linee dei bookmaker ----------
-async function getOdds(games) {
-  const lines = {}, info = { markets: [], remaining: null };
-  if (!ODDS_KEY) { console.log('ODDS_API_KEY non impostata: uso linee stimate.'); return { lines, info }; }
+// plan: [{ g: partita, markets: ['player_points', ...] }] solo per i candidati dei consigli AI
+async function getOdds(plan) {
+  const lines = {}, info = { markets: [], remaining: null, credits: 0 };
   const { json: events, headers } = await getJSON(`${ODDS}/events?apiKey=${ODDS_KEY}`); // 0 crediti
   let remaining = parseInt(headers.get('x-requests-remaining'), 10);
-  const matched = games.map(g => [g, events.find(e => norm(e.home_team) === norm(g.home.name) && norm(e.away_team) === norm(g.away.name))]).filter(x => x[1]);
-  if (!matched.length) { console.log('Nessuna partita trovata sulla Odds API.'); return { lines, info }; }
+  const now = new Date();
+  const daysLeft = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate() - now.getUTCDate() + 1;
+  let budget = Number.isFinite(remaining) ? Math.floor(remaining / daysLeft) : 30;
+  console.log(`Crediti rimasti: ${Number.isFinite(remaining) ? remaining : '?'}, giorni a fine mese: ${daysLeft} → budget di oggi ${budget}`);
+  const matched = plan.map(x => [x.g, events.find(e => norm(e.home_team) === norm(x.g.home.name) && norm(e.away_team) === norm(x.g.away.name)), x.markets]).filter(x => x[1]);
+  info.markets = [...new Set(plan.flatMap(x => x.markets.map(m => MARKET_TO_STAT[m])))];
 
-  let markets;
-  if (ODDS_MARKETS === 'auto') {
-    const now = new Date();
-    const daysLeft = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate() - now.getUTCDate() + 1;
-    const budget = Number.isFinite(remaining) ? Math.floor(remaining / daysLeft) : matched.length;
-    const k = Math.max(1, Math.min(MARKETS.length, Math.floor(budget / matched.length)));
-    markets = MARKETS.slice(0, k).map(m => m[0]);
-    console.log(`Crediti rimasti: ${Number.isFinite(remaining) ? remaining : '?'}, giorni a fine mese: ${daysLeft} → ${k} mercati per partita`);
-  } else markets = ODDS_MARKETS.split(',').map(s => s.trim()).filter(m => MARKET_TO_STAT[m]);
-  info.markets = markets.map(m => MARKET_TO_STAT[m]);
-
-  for (const [g, ev] of matched) {
-    if (Number.isFinite(remaining) && remaining < markets.length) { console.log('Crediti finiti per questo mese.'); break; }
+  for (const [g, ev, markets0] of matched) {
+    const markets = markets0.slice(0, Math.max(0, budget)); // ogni mercato costa 1 credito
+    if (!markets.length) { console.log('Budget di oggi finito.'); break; }
+    budget -= markets.length;
     try {
       const { json, headers: h } = await getJSON(`${ODDS}/events/${ev.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${markets.join(',')}&oddsFormat=decimal`);
-      remaining = parseInt(h.get('x-requests-remaining'), 10);
+      remaining = parseInt(h.get('x-requests-remaining'), 10); info.credits += markets.length;
       const acc = {};
       for (const bk of json.bookmakers || []) for (const m of bk.markets || []) {
         const stat = MARKET_TO_STAT[m.key]; if (!stat) continue;
@@ -356,20 +351,11 @@ for (const [gi, g] of games.entries()) {
 let def = { teams: {}, n: 0, games: 0 };
 try { def = await defense(Object.keys(teams)); } catch (e) { console.warn('Difese non disponibili:', e.message); }
 
-// Linee: scaricate una sola volta al giorno (dalle 18 UTC, quando i bookmaker le hanno pubblicate),
-// poi riusate dagli aggiornamenti successivi della stessa giornata per non consumare crediti.
-const ODDS_CACHE = new URL('../odds-cache.json', import.meta.url);
-let oc = null; try { oc = JSON.parse(await readFile(ODDS_CACHE, 'utf8')); } catch {}
-const day = games.length ? usDate(0) : '';
-let book = {}, oddsInfo = { markets: [], remaining: null };
-if (oc && oc.day === day && Object.keys(oc.lines || {}).length) {
-  book = oc.lines; oddsInfo = oc.info; console.log(`Linee dalla cache di oggi (${Object.keys(book).length}).`);
-} else if (ODDS_KEY && (new Date().getUTCHours() >= 18 || process.env.ODDS_FORCE === '1')) {
-  ({ lines: book, info: oddsInfo } = await getOdds(games));
-  if (Object.keys(book).length) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString() }));
-} else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 18 UTC), uso le stimate.');
-else console.log('ODDS_API_KEY non impostata: uso linee stimate.');
+// 1) linee stimate per tutti
 const STATS = ['pts', 'reb', 'ast', 'fg3', 'pra', 'pa', 'pr', 'ra', 'stl', 'blk', 'stocks', 'tov', 'fant', 'dd', 'td'];
+const AI_STATS = ['pts', 'reb', 'ast', 'fg3', 'pra', 'pr', 'pa', 'ra'];
+const STAT_TO_MARKET = Object.fromEntries(MARKETS.map(([m, s]) => [s, m]));
+const cands = [];
 for (const p of players) {
   p.lines = {}; p.odds = {}; p.est = {};
   const L = p.rawLogs.map(g => {
@@ -382,8 +368,6 @@ for (const p of players) {
   const recent = L.slice(0, 20), last10 = L.slice(0, 10);
   const avg = (a, s) => a.reduce((t, g) => t + g[s], 0) / (a.length || 1);
   for (const s of STATS) {
-    const b = book[norm(p.name) + '|' + s];
-    if (b) { p.lines[s] = b.line; p.odds[s] = { over: b.over, under: b.under, books: b.books }; continue; }
     const est = avg(last10, s) * 0.5 + avg(recent, s) * 0.5;
     if (s === 'dd') { if (avg(recent, 'dd') >= 0.15) { p.lines.dd = 0.5; p.est.dd = true; } continue; }
     if (s === 'td') { if (avg(recent, 'td') >= 0.05) { p.lines.td = 0.5; p.est.td = true; } continue; }
@@ -392,6 +376,42 @@ for (const p of players) {
     if (s === 'blk' && est < 0.6) continue;
     p.lines[s] = s === 'fant' ? Math.round(est) + 0.5 : half(est); p.est[s] = true;
   }
+  // 2) candidati per i consigli AI: minuti stabili, sopra la linea stimata con continuità
+  const mins = last10.map(g => g.min), mAvg = avg(last10, 'min');
+  if (p.doubt || L.length < 8 || mAvg < 20) continue;
+  for (const s of AI_STATS) {
+    if (p.lines[s] === undefined) continue;
+    const X = p.lines[s], h10 = last10.filter(g => g[s] > X).length, h20 = recent.filter(g => g[s] > X).length / recent.length;
+    const vals = recent.map(g => g[s]), m = avg(recent, s), sd = Math.sqrt(vals.reduce((t, v) => t + (v - m) ** 2, 0) / vals.length) || 1;
+    cands.push({ p, s, score: h10 / 10 * 0.5 + h20 * 0.3 + Math.min(1, (avg(last10, s) - X) / sd) * 0.2 });
+  }
+}
+
+// 3) le chiamate alla Odds API servono solo ai consigli AI: i migliori 16 candidati (max 2 per giocatore)
+const AI_POOL = 16;
+cands.sort((a, b) => b.score - a.score);
+const per = {}, chosen = cands.filter(c => (per[c.p.name] = (per[c.p.name] || 0) + 1) <= 2).slice(0, AI_POOL);
+const plan = games.map((g, gi) => ({ g, markets: [...new Set(chosen.filter(c => c.p.gameId === gi).map(c => STAT_TO_MARKET[c.s]))] })).filter(x => x.markets.length);
+console.log(`Candidati AI: ${chosen.length}, partite da interrogare: ${plan.length}, mercati: ${plan.reduce((t, x) => t + x.markets.length, 0)}`);
+
+// linee scaricate una sola volta al giorno (dalle 18 UTC) e riusate dagli aggiornamenti successivi
+const ODDS_CACHE = new URL('../odds-cache.json', import.meta.url);
+let oc = null; try { oc = JSON.parse(await readFile(ODDS_CACHE, 'utf8')); } catch {}
+const day = games.length ? usDate(0) : '';
+let book = {}, oddsInfo = { markets: [], remaining: null };
+if (oc && oc.day === day && Object.keys(oc.lines || {}).length && process.env.ODDS_FORCE !== '1') {
+  book = oc.lines; oddsInfo = oc.info; console.log(`Linee dalla cache di oggi (${Object.keys(book).length}).`);
+} else if (ODDS_KEY && plan.length && (new Date().getUTCHours() >= 18 || process.env.ODDS_FORCE === '1')) {
+  ({ lines: book, info: oddsInfo } = await getOdds(plan));
+  console.log(`Crediti usati oggi: ${oddsInfo.credits}`);
+  if (Object.keys(book).length) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString() }));
+} else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 18 UTC), uso le stimate.');
+else console.log('ODDS_API_KEY non impostata: uso linee stimate.');
+
+// 4) linee vere applicate solo ai candidati AI
+for (const c of chosen) {
+  const b = book[norm(c.p.name) + '|' + c.s];
+  if (b) { c.p.lines[c.s] = b.line; c.p.odds[c.s] = { over: b.over, under: b.under, books: b.books }; c.p.est[c.s] = false; }
 }
 
 const real = players.reduce((n, p) => n + Object.keys(p.odds).length, 0);
