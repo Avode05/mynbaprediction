@@ -933,6 +933,7 @@ function renderHome(){
    Per ogni giocatore e statistica cerca la soglia di Over più alta che resta molto probabile
    (i bookmaker italiani propongono più soglie di Over), poi sceglie le migliori. */
 const AI_N = 10;
+const AI_MIN_ODD = 1.70;
 const AI_STATS = ['pts','reb','ast','fg3','pra','pr','pa','ra'];
 // probabilità di Over X: 60% modello (proiezione) + 40% frequenza reale nelle ultime 20 partite
 function probAt(pj, X, logs, s){
@@ -955,12 +956,16 @@ function aiCandidate(p, s){
     const imp = implied(p, s); // probabilità del mercato (senza margine), in %
     const X = p.lines[s], prM = probAt(pj, X, logs, s), pr = imp !== null ? 0.5*prM + 0.5*imp/100 : prM, h10 = l10.filter(g=>g[s]>X).length, h20 = l20.filter(g=>g[s]>X).length/l20.length;
     const odd = p.odds && p.odds[s] && p.odds[s].over, ev = odd ? odd*pr : null;
-    if(pr < 0.55 || h10 < 6 || (ev !== null && ev < 0.97)) return null;
+    const books = p.odds && p.odds[s] && p.odds[s].books;
+    if(!odd || odd < AI_MIN_ODD) return null;                 // quota Over almeno 1,70
+    if(!isMan(p,s) && (!books || books < 3)) return null;      // linea confermata da almeno 3 bookmaker
+    if(pr < 0.5 || h10 < 5 || ev < 1) return null;
     const m = matchup(p, s, 'over');
     let streak = 0; for(const g of logs){ if(g[s]>X) streak++; else break; }
     const score = 100*(0.45*pr + 0.25*h10/10 + 0.15*h20) + (m ? 0.15*(m.score-50) : 0) + (ev ? (ev-1)*120 : 0) + 8 - (mSd>6 ? 5 : 0) + Math.min(streak,10)*0.5;
     return {p, s, X, pr, h10, h20, pj, m, streak, mAvg, mSd, score, rest:tonightRest(p), real:true, odd, ev};
   }
+  return null; // niente soglie inventate dal modello: solo linee vere
   const top = Math.floor(pj.proj) + 0.5, low = Math.max(0.5, Math.ceil(pj.proj*0.72) - 0.5);
   for(let X = top; X >= low; X -= 1){
     const pr = probAt(pj, X, logs, s), h10 = l10.filter(g=>g[s]>X).length, h20 = l20.filter(g=>g[s]>X).length/l20.length;
@@ -1014,7 +1019,7 @@ function aiCard(x, i){
       <div class="av" style="background:${tc}33;border:2px solid ${tc}">${initials(p.name)}</div>
       <div style="min-width:0;flex:1"><div class="aiName">${esc(p.name)}</div><div class="aiMeta">${p.team} ${p.home?'vs':'@'} ${p.opp} · ore ${p.time}</div></div>
       <div class="aiProb" style="color:${col(prob)}">${prob}%<small>PROB.</small></div></div>
-    <div class="aiPick">OVER ${fmt(X)} <span>${STATS[s].label.toUpperCase()}</span>${x.real?` <span class="tag ${isMan(p,s)?'man':'book'}">${isMan(p,s)?'MIA LINEA':'LINEA BOOKMAKER'}</span>`:''}</div>
+    <div class="aiPick">OVER ${fmt(X)} <span>${STATS[s].label.toUpperCase()}</span>${x.real?` <span class="tag ${isMan(p,s)?'man':'book'}">${isMan(p,s)?'MIA LINEA':'LINEA '+(p.odds[s].books||'')+' BOOKMAKER'}</span>`:''}</div>
     <div class="aiOdds">${x.real && x.odd ? `Quota <b>${fmt(x.odd,2)}</b> · minima ${fmt(fair,2)} → <b style="color:${x.ev>=1.03?'var(--over)':'var(--mid)'}">${x.ev>=1.03?`valore +${Math.round((x.ev-1)*100)}%`:'quota giusta, poco margine'}</b>` : `Soglia scelta dal modello · conviene se la quota è almeno <b>${fmt(fair,2)}</b>`}</div>
     <ul class="aiWhy">${r.map(t=>`<li>${t}</li>`).join('')}</ul>
     ${risks.length?`<div class="aiRisk">⚠️ Attenzione: ${risks.join('; ')}.</div>`:''}
@@ -1027,7 +1032,7 @@ function aiCard(x, i){
 }
 function renderAI(){
   const {picks, pool} = aiPicks();
-  if(!picks.length){ $('aiList').innerHTML = '<div class="empty">Oggi il modello non trova giocate OVER abbastanza solide. Meglio non forzare.</div>'; $('aiMulti').innerHTML=''; return; }
+  if(!picks.length){ $('aiList').innerHTML = '<div class="empty">Oggi non ci sono giocate OVER con linea confermata da almeno 3 bookmaker e quota da 1,70 in su. Meglio non forzare.</div>'; $('aiMulti').innerHTML=''; return; }
   $('aiList').innerHTML = picks.map(aiCard).join('');
   const sizes = [...new Set([3, 5, picks.length].filter(n=>n>=2 && n<=picks.length))];
   const rows = sizes.map(n=>{ const pr = picks.slice(0,n).reduce((t,x)=>t*x.pr, 1), v = Math.round(pr*100);

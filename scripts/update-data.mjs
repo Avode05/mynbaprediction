@@ -316,9 +316,11 @@ async function getOdds(plan) {
         const freq = {}; arr.forEach(x => freq[x.point] = (freq[x.point] || 0) + 1);
         const line = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
         const at = arr.filter(x => x.point === line);
-        const best = s => at.filter(x => x.side === s).sort((a, b) => b.price - a.price)[0];
-        const o = best('over'), u = best('under');
-        lines[k] = { line, over: o?.price || null, under: u?.price || null, books: new Set(arr.map(x => x.bk)).size };
+        // linea valida solo se almeno 3 bookmaker diversi la quotano; quota = mediana tra loro
+        const nBooks = new Set(at.map(x => x.bk)).size;
+        if (nBooks < 3) continue;
+        const med = s => { const v = at.filter(x => x.side === s).map(x => x.price).sort((a, b) => a - b); return v.length ? Math.round(v[Math.floor((v.length - 1) / 2)] * 100) / 100 : null; };
+        lines[k] = { line, over: med('over'), under: med('under'), books: nBooks };
       }
       console.log(`Quote ${g.away.abbr}@${g.home.abbr}: ok (crediti rimasti ${remaining})`);
     } catch (e) { console.warn(`Quote non disponibili per ${g.away.abbr}@${g.home.abbr}: ${e.message}`); }
@@ -387,8 +389,8 @@ for (const p of players) {
   }
 }
 
-// 3) le chiamate alla Odds API servono solo ai consigli AI: i migliori 16 candidati (max 2 per giocatore)
-const AI_POOL = 16;
+// 3) le chiamate alla Odds API servono solo ai consigli AI: i migliori 24 candidati (max 2 per giocatore)
+const AI_POOL = 24;
 cands.sort((a, b) => b.score - a.score);
 const per = {}, chosen = cands.filter(c => (per[c.p.name] = (per[c.p.name] || 0) + 1) <= 2).slice(0, AI_POOL);
 const plan = games.map((g, gi) => ({ g, markets: [...new Set(chosen.filter(c => c.p.gameId === gi).map(c => STAT_TO_MARKET[c.s]))] })).filter(x => x.markets.length);
