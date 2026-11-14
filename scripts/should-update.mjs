@@ -29,7 +29,7 @@ for (const d of [usDate(-1), usDate(0)]) {
 }
 // linee dei bookmaker: una volta al giorno dalle 9 UTC (10 italiane), se non ancora scaricate
 const h = new Date().getUTCHours();
-const few = oc && oc.day === usDate(0) && !oc.retry && Object.keys(oc.lines || {}).length < 8 && h >= 18; // secondo tentativo alle 19
+const few = oc && oc.day === usDate(0) && !oc.eve && h >= 18; // seconda passata alle 19 italiane
 if (!run && h >= 9 && (!oc || oc.day !== usDate(0) || few)) {
   const sb = await (await fetch(`${ESPN}/scoreboard?dates=${usDate(0)}`)).json();
   if ((sb.events || []).some(e => e.status?.type?.state === 'pre')) { run = true; why = 'linee dei bookmaker di stasera'; }
