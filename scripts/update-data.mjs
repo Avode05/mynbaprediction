@@ -292,7 +292,8 @@ async function getOdds(plan, used = null) {
   const daysLeft = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate() - now.getUTCDate() + 1;
   const daily = Number.isFinite(remaining) ? Math.floor(remaining / daysLeft) : 30;
   // mattina: 60% della quota giornaliera; sera (used = crediti del mattino): il resto
-  let budget = process.env.ODDS_BUDGET ? +process.env.ODDS_BUDGET : used === null ? Math.floor(daily * 0.6) : Math.max(0, daily - used);
+  // mattina: tutti i mercati AI di tutte le partite (più linee vere = più consigli); sera: quota giornaliera
+  let budget = process.env.ODDS_BUDGET ? +process.env.ODDS_BUDGET : used === null ? Math.max(daily, 60) : Math.max(daily, 20);
   console.log(`Crediti rimasti: ${Number.isFinite(remaining) ? remaining : '?'}, giorni a fine mese: ${daysLeft} → budget di oggi ${budget}`);
   const matched = plan.map(x => [x.g, events.find(e => norm(e.home_team) === norm(x.g.home.name) && norm(e.away_team) === norm(x.g.away.name)), x.markets]).filter(x => x[1]);
   info.markets = [...new Set(plan.flatMap(x => x.markets.map(m => MARKET_TO_STAT[m])))];
@@ -395,7 +396,8 @@ for (const p of players) {
 const AI_POOL = 24;
 cands.sort((a, b) => b.score - a.score);
 const per = {}, chosen = cands.filter(c => (per[c.p.name] = (per[c.p.name] || 0) + 1) <= 2).slice(0, AI_POOL);
-const plan = games.map((g, gi) => ({ g, markets: [...new Set(chosen.filter(c => c.p.gameId === gi).map(c => STAT_TO_MARKET[c.s]))] })).filter(x => x.markets.length);
+// ogni mercato restituisce le linee di TUTTI i giocatori della partita: chiediamo tutti i mercati AI, prima quelli dei candidati migliori
+const plan = games.map((g, gi) => { const top = [...new Set(chosen.filter(c => c.p.gameId === gi).map(c => STAT_TO_MARKET[c.s]))]; return { g, markets: [...new Set([...top, ...AI_STATS.map(s => STAT_TO_MARKET[s])])].filter(Boolean) }; });
 console.log(`Candidati AI: ${chosen.length}, partite da interrogare: ${plan.length}, mercati: ${plan.reduce((t, x) => t + x.markets.length, 0)}`);
 
 // linee scaricate una sola volta al giorno (dalle 9 UTC = 10 italiane) e riusate dagli aggiornamenti successivi
@@ -416,10 +418,10 @@ if (oc && oc.day === day && Object.keys(oc.lines || {}).length && process.env.OD
 } else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 9 UTC), uso le stimate.');
 else console.log('ODDS_API_KEY non impostata: uso linee stimate.');
 
-// 4) linee vere applicate solo ai candidati AI
-for (const c of chosen) {
-  const b = book[norm(c.p.name) + '|' + c.s];
-  if (b) { c.p.lines[c.s] = b.line; c.p.odds[c.s] = { over: b.over, under: b.under, books: b.books }; c.p.est[c.s] = false; }
+// 4) linee vere applicate a tutti i giocatori dei mercati scaricati
+for (const p of players) for (const s of AI_STATS) {
+  const b = book[norm(p.name) + '|' + s];
+  if (b) { p.lines[s] = b.line; p.odds[s] = { over: b.over, under: b.under, books: b.books }; p.est[s] = false; }
 }
 
 const real = players.reduce((n, p) => n + Object.keys(p.odds).length, 0);
