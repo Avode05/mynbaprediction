@@ -401,12 +401,14 @@ const ODDS_CACHE = new URL('../odds-cache.json', import.meta.url);
 let oc = null; try { oc = JSON.parse(await readFile(ODDS_CACHE, 'utf8')); } catch {}
 const day = games.length ? usDate(0) : '';
 let book = {}, oddsInfo = { markets: [], remaining: null };
-if (oc && oc.day === day && Object.keys(oc.lines || {}).length && process.env.ODDS_FORCE !== '1') {
+// secondo tentativo alle 19 italiane se al mattino le linee erano poche (meno di 8)
+const retry = oc && oc.day === day && !oc.retry && Object.keys(oc.lines || {}).length < 8 && new Date().getUTCHours() >= 18;
+if (oc && oc.day === day && Object.keys(oc.lines || {}).length && process.env.ODDS_FORCE !== '1' && !retry) {
   book = oc.lines; oddsInfo = oc.info; console.log(`Linee dalla cache di oggi (${Object.keys(book).length}).`);
 } else if (ODDS_KEY && plan.length && (new Date().getUTCHours() >= 9 || process.env.ODDS_FORCE === '1')) {
   ({ lines: book, info: oddsInfo } = await getOdds(plan));
   console.log(`Crediti usati oggi: ${oddsInfo.credits}`);
-  if (Object.keys(book).length) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString() }));
+  if (Object.keys(book).length || retry) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString(), retry: !!retry || new Date().getUTCHours() >= 18 }));
 } else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 9 UTC), uso le stimate.');
 else console.log('ODDS_API_KEY non impostata: uso linee stimate.');
 
