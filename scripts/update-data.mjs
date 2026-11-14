@@ -284,13 +284,15 @@ async function defense(teamAbbrs) {
 
 // ---------- 5. Linee dei bookmaker ----------
 // plan: [{ g: partita, markets: ['player_points', ...] }] solo per i candidati dei consigli AI
-async function getOdds(plan) {
+async function getOdds(plan, used = null) {
   const lines = {}, info = { markets: [], remaining: null, credits: 0 };
   const { json: events, headers } = await getJSON(`${ODDS}/events?apiKey=${ODDS_KEY}`); // 0 crediti
   let remaining = parseInt(headers.get('x-requests-remaining'), 10);
   const now = new Date();
   const daysLeft = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate() - now.getUTCDate() + 1;
-  let budget = Number.isFinite(remaining) ? Math.floor(remaining / daysLeft) : 30;
+  const daily = Number.isFinite(remaining) ? Math.floor(remaining / daysLeft) : 30;
+  // mattina: 60% della quota giornaliera; sera (used = crediti del mattino): il resto
+  let budget = used === null ? Math.floor(daily * 0.6) : Math.max(0, daily - used);
   console.log(`Crediti rimasti: ${Number.isFinite(remaining) ? remaining : '?'}, giorni a fine mese: ${daysLeft} → budget di oggi ${budget}`);
   const matched = plan.map(x => [x.g, events.find(e => norm(e.home_team) === norm(x.g.home.name) && norm(e.away_team) === norm(x.g.away.name)), x.markets]).filter(x => x[1]);
   info.markets = [...new Set(plan.flatMap(x => x.markets.map(m => MARKET_TO_STAT[m])))];
@@ -401,14 +403,16 @@ const ODDS_CACHE = new URL('../odds-cache.json', import.meta.url);
 let oc = null; try { oc = JSON.parse(await readFile(ODDS_CACHE, 'utf8')); } catch {}
 const day = games.length ? usDate(0) : '';
 let book = {}, oddsInfo = { markets: [], remaining: null };
-// secondo tentativo alle 19 italiane se al mattino le linee erano poche (meno di 8)
-const retry = oc && oc.day === day && !oc.retry && Object.keys(oc.lines || {}).length < 8 && new Date().getUTCHours() >= 18;
+// seconda passata alle 19 italiane (18 UTC): aggiorna le quote col resto del budget giornaliero
+const retry = oc && oc.day === day && !oc.eve && new Date().getUTCHours() >= 18;
 if (oc && oc.day === day && Object.keys(oc.lines || {}).length && process.env.ODDS_FORCE !== '1' && !retry) {
   book = oc.lines; oddsInfo = oc.info; console.log(`Linee dalla cache di oggi (${Object.keys(book).length}).`);
 } else if (ODDS_KEY && plan.length && (new Date().getUTCHours() >= 9 || process.env.ODDS_FORCE === '1')) {
-  ({ lines: book, info: oddsInfo } = await getOdds(plan));
-  console.log(`Crediti usati oggi: ${oddsInfo.credits}`);
-  if (Object.keys(book).length || retry) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString(), retry: !!retry || new Date().getUTCHours() >= 18 }));
+  ({ lines: book, info: oddsInfo } = await getOdds(plan, retry ? (oc.info?.credits || 0) : null));
+  console.log(`Crediti usati ora: ${oddsInfo.credits}`);
+  if (retry) { book = { ...oc.lines, ...book }; oddsInfo.credits += oc.info?.credits || 0; } // le linee del mattino restano dove la sera non ci sono
+  const eve = new Date().getUTCHours() >= 18;
+  if (Object.keys(book).length || eve) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString(), eve }));
 } else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 9 UTC), uso le stimate.');
 else console.log('ODDS_API_KEY non impostata: uso linee stimate.');
 

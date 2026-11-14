@@ -1,6 +1,6 @@
 // Decide se fare l'aggiornamento completo (lanciato ogni ora da GitHub).
 // Aggiorna quando: tutte le partite di una giornata sono finite e sono passate 3 ore
-// dalla fine stimata dell'ultima (inizio + 2,5 ore), oppure alle 10 italiane per le linee.
+// dalla fine stimata dell'ultima (inizio + 2,5 ore), oppure alle 10 e alle 19 italiane per le linee.
 import { readFile, writeFile, appendFile } from 'node:fs/promises';
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
