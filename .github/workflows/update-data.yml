@@ -4,7 +4,7 @@ on:
   schedule:
     # Controllo ogni ora (pochi secondi). L'aggiornamento vero parte solo:
     # - 3 ore dopo la fine dell'ultima partita della giornata
-    # - alle 19 italiane per scaricare le linee dei bookmaker
+    # - alle 10 italiane per scaricare le linee dei bookmaker
     - cron: "0 * * * *"
   workflow_dispatch: # "Run workflow": aggiorna subito, linee comprese
 

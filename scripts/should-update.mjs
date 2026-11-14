@@ -1,6 +1,6 @@
 // Decide se fare l'aggiornamento completo (lanciato ogni ora da GitHub).
 // Aggiorna quando: tutte le partite di una giornata sono finite e sono passate 3 ore
-// dalla fine stimata dell'ultima (inizio + 2,5 ore), oppure alle 19 italiane per le linee.
+// dalla fine stimata dell'ultima (inizio + 2,5 ore), oppure alle 10 italiane per le linee.
 import { readFile, writeFile, appendFile } from 'node:fs/promises';
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
@@ -27,8 +27,8 @@ for (const d of [usDate(-1), usDate(0)]) {
     state.done = [...state.done, d].slice(-10);
   }
 }
-// linee dei bookmaker: una volta al giorno dalle 18 UTC (19 italiane), se non ancora scaricate
-if (!run && new Date().getUTCHours() >= 18 && (!oc || oc.day !== usDate(0))) {
+// linee dei bookmaker: una volta al giorno dalle 9 UTC (10 italiane), se non ancora scaricate
+if (!run && new Date().getUTCHours() >= 9 && (!oc || oc.day !== usDate(0))) {
   const sb = await (await fetch(`${ESPN}/scoreboard?dates=${usDate(0)}`)).json();
   if ((sb.events || []).some(e => e.status?.type?.state === 'pre')) { run = true; why = 'linee dei bookmaker di stasera'; }
 }

@@ -396,18 +396,18 @@ const per = {}, chosen = cands.filter(c => (per[c.p.name] = (per[c.p.name] || 0)
 const plan = games.map((g, gi) => ({ g, markets: [...new Set(chosen.filter(c => c.p.gameId === gi).map(c => STAT_TO_MARKET[c.s]))] })).filter(x => x.markets.length);
 console.log(`Candidati AI: ${chosen.length}, partite da interrogare: ${plan.length}, mercati: ${plan.reduce((t, x) => t + x.markets.length, 0)}`);
 
-// linee scaricate una sola volta al giorno (dalle 18 UTC) e riusate dagli aggiornamenti successivi
+// linee scaricate una sola volta al giorno (dalle 9 UTC = 10 italiane) e riusate dagli aggiornamenti successivi
 const ODDS_CACHE = new URL('../odds-cache.json', import.meta.url);
 let oc = null; try { oc = JSON.parse(await readFile(ODDS_CACHE, 'utf8')); } catch {}
 const day = games.length ? usDate(0) : '';
 let book = {}, oddsInfo = { markets: [], remaining: null };
 if (oc && oc.day === day && Object.keys(oc.lines || {}).length && process.env.ODDS_FORCE !== '1') {
   book = oc.lines; oddsInfo = oc.info; console.log(`Linee dalla cache di oggi (${Object.keys(book).length}).`);
-} else if (ODDS_KEY && plan.length && (new Date().getUTCHours() >= 18 || process.env.ODDS_FORCE === '1')) {
+} else if (ODDS_KEY && plan.length && (new Date().getUTCHours() >= 9 || process.env.ODDS_FORCE === '1')) {
   ({ lines: book, info: oddsInfo } = await getOdds(plan));
   console.log(`Crediti usati oggi: ${oddsInfo.credits}`);
   if (Object.keys(book).length) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString() }));
-} else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 18 UTC), uso le stimate.');
+} else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 9 UTC), uso le stimate.');
 else console.log('ODDS_API_KEY non impostata: uso linee stimate.');
 
 // 4) linee vere applicate solo ai candidati AI
