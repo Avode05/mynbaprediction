@@ -2,11 +2,11 @@ name: Aggiorna dati NBA
 
 on:
   schedule:
-    # Ogni 2 ore alle ore UTC pari = in Italia 19, 21, 23, 01, 03 ... (ora solare).
-    # Con l'ora legale (estate) diventano 20, 22, 00, 02 ...
-    # GitHub può far partire l'aggiornamento con qualche minuto di ritardo.
-    - cron: "0 */2 * * *"
-  workflow_dispatch: # pulsante "Run workflow" per aggiornare a mano
+    # Controllo ogni ora (pochi secondi). L'aggiornamento vero parte solo:
+    # - 3 ore dopo la fine dell'ultima partita della giornata
+    # - alle 19 italiane per scaricare le linee dei bookmaker
+    - cron: "0 * * * *"
+  workflow_dispatch: # "Run workflow": aggiorna subito, linee comprese
 
 permissions:
   contents: write
@@ -24,18 +24,24 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - name: Serve aggiornare?
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else node scripts/should-update.mjs; fi
       - name: Scarica i dati
+        if: steps.check.outputs.run == 'true'
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
-          # lanciato a mano: scarica le linee anche prima delle 19
           ODDS_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
         run: node scripts/update-data.mjs
-      - name: Salva data.json
+      - name: Salva
+        if: steps.check.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git add data.json defense-cache.json
           [ -f odds-cache.json ] && git add odds-cache.json || true
+          [ -f update-state.json ] && git add update-state.json || true
           git diff --cached --quiet || git commit -m "Aggiorna dati $(date -u +%Y-%m-%d\ %H:%M)"
           git push
