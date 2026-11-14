@@ -292,14 +292,15 @@ async function getOdds(plan, used = null) {
   const daysLeft = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate() - now.getUTCDate() + 1;
   const daily = Number.isFinite(remaining) ? Math.floor(remaining / daysLeft) : 30;
   // mattina: 60% della quota giornaliera; sera (used = crediti del mattino): il resto
-  // mattina: tutti i mercati AI di tutte le partite (più linee vere = più consigli); sera: quota giornaliera
-  let budget = process.env.ODDS_BUDGET ? +process.env.ODDS_BUDGET : used === null ? Math.max(daily, 60) : Math.max(daily, 20);
+  // risparmio: mattina 70% della quota giornaliera, sera il resto; i mercati sono divisi in parti uguali tra le partite
+  let budget = process.env.ODDS_BUDGET ? +process.env.ODDS_BUDGET : used === null ? Math.floor(daily * 0.7) : Math.max(0, daily - used);
+  const perGame = Math.max(1, Math.floor(budget / Math.max(1, plan.length)));
   console.log(`Crediti rimasti: ${Number.isFinite(remaining) ? remaining : '?'}, giorni a fine mese: ${daysLeft} → budget di oggi ${budget}`);
   const matched = plan.map(x => [x.g, events.find(e => norm(e.home_team) === norm(x.g.home.name) && norm(e.away_team) === norm(x.g.away.name)), x.markets]).filter(x => x[1]);
   info.markets = [...new Set(plan.flatMap(x => x.markets.map(m => MARKET_TO_STAT[m])))];
 
   for (const [g, ev, markets0] of matched) {
-    const markets = markets0.slice(0, Math.max(0, budget)); // ogni mercato costa 1 credito
+    const markets = markets0.slice(0, Math.min(perGame, Math.max(0, budget))); // ogni mercato costa 1 credito
     if (!markets.length) { console.log('Budget di oggi finito.'); break; }
     budget -= markets.length;
     try {
@@ -397,7 +398,9 @@ const AI_POOL = 24;
 cands.sort((a, b) => b.score - a.score);
 const per = {}, chosen = cands.filter(c => (per[c.p.name] = (per[c.p.name] || 0) + 1) <= 2).slice(0, AI_POOL);
 // ogni mercato restituisce le linee di TUTTI i giocatori della partita: chiediamo tutti i mercati AI, prima quelli dei candidati migliori
-const plan = games.map((g, gi) => { const top = [...new Set(chosen.filter(c => c.p.gameId === gi).map(c => STAT_TO_MARKET[c.s]))]; return { g, markets: [...new Set([...top, ...AI_STATS.map(s => STAT_TO_MARKET[s])])].filter(Boolean) }; });
+// mercati in ordine di resa per i consigli (punti e triple danno più spesso quote da 1,70): pochi crediti per partita
+const ODDS_PRIORITY = ['pts', 'fg3', 'reb', 'ast'];
+const plan = games.map(g => ({ g, markets: ODDS_PRIORITY.map(s => STAT_TO_MARKET[s]).filter(Boolean) }));
 console.log(`Candidati AI: ${chosen.length}, partite da interrogare: ${plan.length}, mercati: ${plan.reduce((t, x) => t + x.markets.length, 0)}`);
 
 // linee scaricate una sola volta al giorno (dalle 9 UTC = 10 italiane) e riusate dagli aggiornamenti successivi
