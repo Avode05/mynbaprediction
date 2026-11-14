@@ -7,6 +7,10 @@ on:
     # - alle 10 e alle 19 italiane per le linee dei bookmaker
     - cron: "0 * * * *"
   workflow_dispatch: # "Run workflow": aggiorna subito, linee comprese
+    inputs:
+      budget:
+        description: "Crediti massimi per le quote (vuoto = automatico)"
+        required: false
 
 permissions:
   contents: write
@@ -34,6 +38,7 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_MARKETS: ${{ vars.ODDS_MARKETS }}
           ODDS_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          ODDS_BUDGET: ${{ github.event.inputs.budget }}
         run: node scripts/update-data.mjs
       - name: Salva
         if: steps.check.outputs.run == 'true'

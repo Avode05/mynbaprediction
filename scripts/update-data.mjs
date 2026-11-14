@@ -292,7 +292,7 @@ async function getOdds(plan, used = null) {
   const daysLeft = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate() - now.getUTCDate() + 1;
   const daily = Number.isFinite(remaining) ? Math.floor(remaining / daysLeft) : 30;
   // mattina: 60% della quota giornaliera; sera (used = crediti del mattino): il resto
-  let budget = used === null ? Math.floor(daily * 0.6) : Math.max(0, daily - used);
+  let budget = process.env.ODDS_BUDGET ? +process.env.ODDS_BUDGET : used === null ? Math.floor(daily * 0.6) : Math.max(0, daily - used);
   console.log(`Crediti rimasti: ${Number.isFinite(remaining) ? remaining : '?'}, giorni a fine mese: ${daysLeft} → budget di oggi ${budget}`);
   const matched = plan.map(x => [x.g, events.find(e => norm(e.home_team) === norm(x.g.home.name) && norm(e.away_team) === norm(x.g.away.name)), x.markets]).filter(x => x[1]);
   info.markets = [...new Set(plan.flatMap(x => x.markets.map(m => MARKET_TO_STAT[m])))];
