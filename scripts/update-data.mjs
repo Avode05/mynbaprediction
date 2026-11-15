@@ -398,8 +398,8 @@ const AI_POOL = 24;
 cands.sort((a, b) => b.score - a.score);
 const per = {}, chosen = cands.filter(c => (per[c.p.name] = (per[c.p.name] || 0) + 1) <= 2).slice(0, AI_POOL);
 // ogni mercato restituisce le linee di TUTTI i giocatori della partita: chiediamo tutti i mercati AI, prima quelli dei candidati migliori
-// mercati per i consigli: punti e combo (scelta dell'utente), pochi crediti per partita
-const ODDS_PRIORITY = ['pts', 'pra', 'pr', 'pa', 'ra'];
+// mercati per i consigli: punti, rimbalzi, assist e combo (scelta dell'utente), pochi crediti per partita
+const ODDS_PRIORITY = ['pts', 'reb', 'ast', 'pra', 'pr', 'pa', 'ra'];
 const plan = games.map(g => ({ g, markets: ODDS_PRIORITY.map(s => STAT_TO_MARKET[s]).filter(Boolean) }));
 console.log(`Candidati AI: ${chosen.length}, partite da interrogare: ${plan.length}, mercati: ${plan.reduce((t, x) => t + x.markets.length, 0)}`);
 
