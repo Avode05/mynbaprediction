@@ -580,7 +580,7 @@ function activeFilters(){
   if(f.venue!=='all') a.push(['venue', f.venue==='home'?'In casa':'In trasferta']);
   if(f.result!=='all') a.push(['result', f.result==='W'?'Vittorie':'Sconfitte']);
   if(f.rest!=='all') a.push(['rest', f.rest==='b2b'?'Back-to-back':'Con riposo']);
-  if(f.opp) a.push(['opp', `${RANKS[f.opp.m].label}: ${f.opp.mode==='sim'?'simili ±5':f.opp.mode==='top'?'top 10':'ultime 10'}`]);
+  if(f.opp) a.push(['opp', `${f.opp.m==='defpos'?'Def vs ruolo ('+STATS[f.opp.s].short+')':RANKS[f.opp.m].label}: ${f.opp.mode==='sim'?'simili ±5':f.opp.mode==='top'?'top 10':'ultime 10'}`]);
   return a;
 }
 function games(p){
@@ -593,9 +593,11 @@ function games(p){
   if(f.venue!=='all') logs = logs.filter(g=>g.home===(f.venue==='home'));
   if(f.result!=='all') logs = logs.filter(g=>g.win===(f.result==='W'));
   if(f.rest==='b2b') logs = logs.filter(g=>g.rest===0); else if(f.rest==='rest') logs = logs.filter(g=>g.rest>=1);
-  if(f.opp && DEF && DEF.ranks){
-    const R = DEF.ranks, me = R[p.opp] && R[p.opp][f.opp.m];
-    logs = logs.filter(g=>{ const r = R[g.opp] && R[g.opp][f.opp.m]; if(!r) return false;
+  if(f.opp && DEF && (DEF.ranks || f.opp.m==='defpos')){
+    // 'defpos' = difesa dell'avversario contro il ruolo del giocatore nella stat scelta
+    const rk = t2 => f.opp.m==='defpos' ? DEF.teams[t2] && DEF.teams[t2][p.pos] && DEF.teams[t2][p.pos][f.opp.s] : DEF.ranks && DEF.ranks[t2] && DEF.ranks[t2][f.opp.m];
+    const me = rk(p.opp);
+    logs = logs.filter(g=>{ const r = rk(g.opp); if(!r) return false;
       return f.opp.mode==='sim' ? (me && Math.abs(r[1]-me[1])<=5) : f.opp.mode==='top' ? r[1]<=10 : r[1]>=21; });
   }
   if(conds.length) logs = logs.filter(g => g.tid===t.id && conds.every(([n,m]) => t.played[n].has(g.id) === (m==='with')));
@@ -1103,7 +1105,7 @@ function ring(v){
 function suggestedHTML(p, stat){
   const f = state.f, out = [];
   const dp = DEF && DEF.teams[p.opp] && DEF.teams[p.opp][p.pos] && DEF.teams[p.opp][p.pos][stat];
-  if(dp) out.push(`<span class="sugc static" title="Difesa contro il ruolo">Def vs ${POS1[p.pos]} (${STATS[stat].short})<b style="color:${rCol(dp[1])}">#${dp[1]}</b></span>`);
+  if(dp) out.push(`<button class="sugc ${f.opp&&f.opp.m==='defpos'?'on':''}" data-sugdef="${stat}" title="Difesa contro il ruolo. Tocca per filtrare le partite contro difese simili (±5)">Def vs ${POS1[p.pos]} (${STATS[stat].short})<b style="color:${rCol(dp[1])}">#${dp[1]}</b></button>`);
   out.push(`<button class="sugc ${f.h2h?'on':''}" data-fset="h2h:${!f.h2h}">H2H vs ${p.opp}</button>`);
   for(const m of (SUGGEST[stat]||[])){
     const r = oppRank(p.opp, m); if(!r) continue;
@@ -1322,6 +1324,7 @@ document.addEventListener('click', e=>{
   if(d.fstep){ const steps=[3,5,8,10,12,15,20,25,30,40,50,82], n = state.f.n;
     state.f.n = +d.fstep>0 ? (steps.find(x=>x>n) || 82) : ([...steps].reverse().find(x=>x<n) || 3); rerenderAll(); return; }
   if(d.fmin){ if(d.fmin==='reset'){ state.f.minMin=0; state.f.maxMin=48; } else { const lo=+d.fmin; state.f.minMin=lo; state.f.maxMin=Math.min(48, lo+12); } rerenderAll(); return; }
+  if(d.sugdef){ state.f.opp = (state.f.opp && state.f.opp.m==='defpos') ? null : {m:'defpos', s:d.sugdef, mode:'sim'}; rerenderAll(); return; }
   if(d.sug){ state.f.opp = (state.f.opp && state.f.opp.m===d.sug) ? null : {m:d.sug, mode:'sim'}; rerenderAll(); return; }
   if(d.fclear){ const k=d.fclear; if(k==='min'){state.f.minMin=0;state.f.maxMin=48;} else state.f[k]=DEFAULT_F[k]; rerenderAll(); return; }
   if('freset' in d){ state.f={...DEFAULT_F, n:state.f.n}; state.onoff={}; rerenderAll(); return; }
