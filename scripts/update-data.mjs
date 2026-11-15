@@ -409,14 +409,20 @@ let oc = null; try { oc = JSON.parse(await readFile(ODDS_CACHE, 'utf8')); } catc
 const day = games.length ? usDate(0) : '';
 let book = {}, oddsInfo = { markets: [], remaining: null };
 // seconda passata alle 19 italiane (18 UTC): aggiorna le quote col resto del budget giornaliero
-const retry = oc && oc.day === day && !oc.eve && new Date().getUTCHours() >= 18;
+// la passata serale è alle 19 italiane, oppure 1 ora prima della prima partita se questa inizia prima
+const firstStart = Math.min(...games.map(g => Date.parse(g.time)));
+const n0 = new Date(), eveAt = Math.min(Date.UTC(n0.getUTCFullYear(), n0.getUTCMonth(), n0.getUTCDate(), 18), firstStart - 3600e3);
+const isEve = Date.now() >= eveAt;
+const retry = oc && oc.day === day && !oc.eve && isEve;
+// niente crediti per le partite già iniziate (quote live)
+const planOpen = plan.filter(x => Date.parse(x.g.time) > Date.now());
 if (oc && oc.day === day && Object.keys(oc.lines || {}).length && process.env.ODDS_FORCE !== '1' && !retry) {
   book = oc.lines; oddsInfo = oc.info; console.log(`Linee dalla cache di oggi (${Object.keys(book).length}).`);
-} else if (ODDS_KEY && plan.length && (new Date().getUTCHours() >= 9 || process.env.ODDS_FORCE === '1')) {
-  ({ lines: book, info: oddsInfo } = await getOdds(plan, retry ? (oc.info?.credits || 0) : null));
+} else if (ODDS_KEY && planOpen.length && (new Date().getUTCHours() >= 9 || process.env.ODDS_FORCE === '1')) {
+  ({ lines: book, info: oddsInfo } = await getOdds(planOpen, retry ? (oc.info?.credits || 0) : null));
   console.log(`Crediti usati ora: ${oddsInfo.credits}`);
   if (retry) { book = { ...oc.lines, ...book }; oddsInfo.credits += oc.info?.credits || 0; } // le linee del mattino restano dove la sera non ci sono
-  const eve = new Date().getUTCHours() >= 18;
+  const eve = isEve;
   if (Object.keys(book).length || eve) await writeFile(ODDS_CACHE, JSON.stringify({ day, lines: book, info: oddsInfo, at: new Date().toISOString(), eve }));
 } else if (ODDS_KEY) console.log('Linee: troppo presto (prima delle 9 UTC), uso le stimate.');
 else console.log('ODDS_API_KEY non impostata: uso linee stimate.');

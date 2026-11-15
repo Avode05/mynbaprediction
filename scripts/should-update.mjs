@@ -29,10 +29,14 @@ for (const d of [usDate(-1), usDate(0)]) {
 }
 // linee dei bookmaker: una volta al giorno dalle 9 UTC (10 italiane), se non ancora scaricate
 const h = new Date().getUTCHours();
-const few = oc && oc.day === usDate(0) && !oc.eve && h >= 18; // seconda passata alle 19 italiane
-if (!run && h >= 9 && (!oc || oc.day !== usDate(0) || few)) {
+if (!run && h >= 9) {
   const sb = await (await fetch(`${ESPN}/scoreboard?dates=${usDate(0)}`)).json();
-  if ((sb.events || []).some(e => e.status?.type?.state === 'pre')) { run = true; why = 'linee dei bookmaker di stasera'; }
+  const pre = (sb.events || []).filter(e => e.status?.type?.state === 'pre');
+  // seconda passata: alle 19 italiane, oppure 1 ora prima della prima partita se inizia prima delle 19
+  const n0 = new Date(), first = Math.min(...(sb.events || []).map(e => Date.parse(e.date)));
+  const eve = Date.now() >= Math.min(Date.UTC(n0.getUTCFullYear(), n0.getUTCMonth(), n0.getUTCDate(), 18), first - 3600e3);
+  const need = !oc || oc.day !== usDate(0) || (!oc.eve && eve);
+  if (need && pre.length) { run = true; why = 'linee dei bookmaker di stasera'; }
 }
 await writeFile(STATE, JSON.stringify(state));
 console.log(`Aggiornare: ${run ? 'SÌ' : 'no'} (${why})`);
