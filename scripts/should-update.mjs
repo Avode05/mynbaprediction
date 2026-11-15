@@ -32,9 +32,10 @@ const h = new Date().getUTCHours();
 if (!run && h >= 9) {
   const sb = await (await fetch(`${ESPN}/scoreboard?dates=${usDate(0)}`)).json();
   const pre = (sb.events || []).filter(e => e.status?.type?.state === 'pre');
-  // seconda passata: alle 19 italiane, oppure 1 ora prima della prima partita se inizia prima delle 19
+  // seconda passata: alle 19 italiane; se la prima partita è alle 19 o prima, 3 ore prima di essa
   const n0 = new Date(), first = Math.min(...(sb.events || []).map(e => Date.parse(e.date)));
-  const eve = Date.now() >= Math.min(Date.UTC(n0.getUTCFullYear(), n0.getUTCMonth(), n0.getUTCDate(), 18), first - 3600e3);
+  const at19 = Date.UTC(n0.getUTCFullYear(), n0.getUTCMonth(), n0.getUTCDate(), 18);
+  const eve = Date.now() >= (first <= at19 ? first - 3 * 3600e3 : at19);
   const need = !oc || oc.day !== usDate(0) || (!oc.eve && eve);
   if (need && pre.length) { run = true; why = 'linee dei bookmaker di stasera'; }
 }

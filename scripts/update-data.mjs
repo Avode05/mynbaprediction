@@ -409,9 +409,9 @@ let oc = null; try { oc = JSON.parse(await readFile(ODDS_CACHE, 'utf8')); } catc
 const day = games.length ? usDate(0) : '';
 let book = {}, oddsInfo = { markets: [], remaining: null };
 // seconda passata alle 19 italiane (18 UTC): aggiorna le quote col resto del budget giornaliero
-// la passata serale è alle 19 italiane, oppure 1 ora prima della prima partita se questa inizia prima
+// la passata serale è alle 19 italiane; se la prima partita inizia alle 19 o prima, 3 ore prima di essa
 const firstStart = Math.min(...games.map(g => Date.parse(g.time)));
-const n0 = new Date(), eveAt = Math.min(Date.UTC(n0.getUTCFullYear(), n0.getUTCMonth(), n0.getUTCDate(), 18), firstStart - 3600e3);
+const n0 = new Date(), at19 = Date.UTC(n0.getUTCFullYear(), n0.getUTCMonth(), n0.getUTCDate(), 18), eveAt = firstStart <= at19 ? firstStart - 3 * 3600e3 : at19;
 const isEve = Date.now() >= eveAt;
 const retry = oc && oc.day === day && !oc.eve && isEve;
 // niente crediti per le partite già iniziate (quote live)
